@@ -10,6 +10,16 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import * as bcrypt from 'bcryptjs';
 
+/** Fields returned for a newly registered user (no password, no updatedAt) */
+const REGISTER_USER_SELECT = {
+  id: true,
+  name: true,
+  email: true,
+  role: true,
+  status: true,
+  createdAt: true,
+} as const;
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -32,14 +42,7 @@ export class AuthService {
         password: hashed,
         role: dto.role ?? 'VIEWER',
       },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        status: true,
-        createdAt: true,
-      },
+      select: REGISTER_USER_SELECT,
     });
 
     const token = this.generateToken(user.id, user.email);

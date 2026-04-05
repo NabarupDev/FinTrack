@@ -17,14 +17,19 @@ import { JwtStrategy } from './strategies/jwt.strategy';
         if (!secret) {
           throw new Error('JWT_SECRET environment variable is not set');
         }
-        const expiresIn = config.get<string>('JWT_EXPIRES_IN') || '7d';
         return {
           secret,
-          signOptions: { expiresIn: expiresIn as `${number}d` },
+          // jsonwebtoken's StringValue type only accepts string literals, not
+          // runtime strings. Safe to assert — value comes from .env config.
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          signOptions: {
+            expiresIn: config.get<string>('JWT_EXPIRES_IN') ?? '7d',
+          } as any,
         };
       },
     }),
   ],
+
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy],
   exports: [JwtModule, PassportModule],

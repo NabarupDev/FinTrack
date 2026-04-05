@@ -1,98 +1,428 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Financial Records API
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+A production-grade REST API for managing financial records with role-based access control,
+JWT authentication, and analytics dashboards.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+---
 
-## Description
+## Table of Contents
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+- [Tech Stack](#tech-stack)
+- [Getting Started](#getting-started)
+- [Testing](#testing)
+- [API Reference](#api-reference)
+- [Role Permissions](#role-permissions)
+- [Project Structure](#project-structure)
+- [Response Format](#response-format)
+- [Technical Decisions](#technical-decisions)
+- [Trade-offs](#trade-offs)
+- [Additional Notes](#additional-notes)
+- [License](#license)
 
-## Project setup
+---
 
-```bash
-$ pnpm install
-```
+## Tech Stack
 
-## Compile and run the project
+| Layer        | Technology                          |
+|--------------|-------------------------------------|
+| Framework    | NestJS (Node.js)                    |
+| Language     | TypeScript                          |
+| Database     | MySQL                               |
+| ORM          | Prisma                              |
+| Auth         | JWT via @nestjs/jwt + Passport      |
+| Validation   | class-validator + class-transformer |
+| Docs         | Swagger UI (@nestjs/swagger)        |
+| Testing      | Jest + Supertest                    |
 
-```bash
-# development
-$ pnpm run start
+---
 
-# watch mode
-$ pnpm run start:dev
+## Getting Started
 
-# production mode
-$ pnpm run start:prod
-```
+### Prerequisites
 
-## Run tests
+- Node.js v18+
+- MySQL running locally or a remote MySQL instance
+- pnpm (or npm)
 
-```bash
-# unit tests
-$ pnpm run test
-
-# e2e tests
-$ pnpm run test:e2e
-
-# test coverage
-$ pnpm run test:cov
-```
-
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+### Installation
 
 ```bash
-$ pnpm install -g @nestjs/mau
-$ mau deploy
+git clone https://github.com/NabarupDev/FinTrack
+cd FinTrack
+pnpm install
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+### Environment Setup
 
-## Resources
+```bash
+cp .env.example .env
+```
 
-Check out a few resources that may come in handy when working with NestJS:
+Fill in your values:
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+| Variable        | Description                         | Example                                          |
+|-----------------|-------------------------------------|--------------------------------------------------|
+| DATABASE_URL    | Prisma MySQL connection string      | mysql://root:your_db_password@localhost:3306/financial_db |
+| JWT_SECRET      | Secret key for JWT signing          | change_as_u_need                                   |
+| JWT_EXPIRES_IN  | Token expiry duration               | 7d                                               |
+| NODE_ENV        | Environment                         | development                                      |
+| PORT            | Server port                         | 3000                                             |
 
-## Support
+### Database Setup
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+```bash
+npx prisma migrate dev --name init
+npx prisma generate
+```
 
-## Stay in touch
+### Seed Database (Optional)
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+Populate the database with test users and sample records:
+
+```bash
+npx prisma db seed
+```
+
+Test credentials (password: `password123`):
+
+| Role    | Email                  |
+|---------|------------------------|
+| Admin   | admin@example.com      |
+| Analyst | analyst@example.com    |
+| Viewer  | viewer@example.com     |
+
+### Run
+
+```bash
+pnpm run start:dev    # development with hot reload
+pnpm run start:prod   # production build
+```
+
+- API base URL: `http://localhost:3000/api`
+- Swagger UI: `http://localhost:3000/api/docs`
+
+---
+
+## Testing
+
+### Unit Tests
+
+```bash
+pnpm run test
+```
+
+### End-to-End Tests
+
+```bash
+pnpm run test:e2e
+```
+
+### Test Coverage
+
+```bash
+pnpm run test:cov
+```
+
+### Test Structure
+
+```
+test/
+  app.e2e-spec.ts         # Health check and response envelope tests
+  auth.e2e-spec.ts        # Authentication flow tests
+  users.e2e-spec.ts       # User management CRUD tests
+  records.e2e-spec.ts     # Financial records CRUD tests
+  dashboard.e2e-spec.ts   # Dashboard analytics tests
+  setup.ts                # Test app bootstrap
+  types.ts                # Shared type definitions
+```
+
+---
+
+## API Reference
+
+### Auth (public)
+
+| Method | Endpoint             | Description          |
+|--------|----------------------|----------------------|
+| POST   | /api/auth/register   | Register new user    |
+| POST   | /api/auth/login      | Login, receive token |
+
+### Users (Admin only)
+
+| Method | Endpoint                   | Description                    |
+|--------|----------------------------|--------------------------------|
+| POST   | /api/users                 | Create user                    |
+| GET    | /api/users                 | List users (filter: role, status) |
+| GET    | /api/users/:id             | Get user by id                 |
+| PATCH  | /api/users/:id             | Update user                    |
+| PATCH  | /api/users/:id/status      | Activate or deactivate         |
+| DELETE | /api/users/:id             | Delete user                    |
+
+### Records
+
+| Method | Endpoint            | Role            | Description                       |
+|--------|---------------------|-----------------|-----------------------------------|
+| POST   | /api/records        | ADMIN           | Create record                     |
+| GET    | /api/records        | ADMIN, ANALYST  | List records (filter + paginate)  |
+| GET    | /api/records/:id    | ADMIN, ANALYST  | Get record by id                  |
+| PATCH  | /api/records/:id    | ADMIN           | Update record                     |
+| DELETE | /api/records/:id    | ADMIN           | Delete record                     |
+
+Query params for GET /api/records:
+
+| Param     | Type   | Description                                |
+|-----------|--------|--------------------------------------------|
+| type      | string | Filter by INCOME or EXPENSE                |
+| category  | string | Case-insensitive contains match            |
+| startDate | date   | Records on or after this date (ISO format) |
+| endDate   | date   | Records on or before this date (ISO format)|
+| search    | string | Search in category or notes                |
+| page      | number | Page number (default: 1)                   |
+| limit     | number | Results per page (default: 10, max: 100)   |
+
+### Dashboard (all roles)
+
+| Method | Endpoint                             | Description                         |
+|--------|--------------------------------------|-------------------------------------|
+| GET    | /api/dashboard/total-income          | Sum of all income records           |
+| GET    | /api/dashboard/total-expense         | Sum of all expense records          |
+| GET    | /api/dashboard/net-balance           | Income, expense, and net balance    |
+| GET    | /api/dashboard/category-summary      | Totals grouped by category          |
+| GET    | /api/dashboard/recent-transactions   | Last 10 records                     |
+| GET    | /api/dashboard/monthly-trend         | Income vs expense, last 12 months   |
+
+---
+
+## Role Permissions
+
+| Endpoint Group          | ADMIN | ANALYST | VIEWER |
+|-------------------------|:-----:|:-------:|:------:|
+| POST /api/auth          | Y     | Y       | Y      |
+| /api/users (all)        | Y     | N       | N      |
+| POST /api/records       | Y     | N       | N      |
+| GET /api/records        | Y     | Y       | N      |
+| PATCH/DELETE /records   | Y     | N       | N      |
+| /api/dashboard (all)    | Y     | Y       | Y      |
+
+---
+
+## Project Structure
+
+```
+src/
+  auth/
+    auth.module.ts
+    auth.controller.ts
+    auth.service.ts
+    dto/
+      register.dto.ts
+      login.dto.ts
+    strategies/
+      jwt.strategy.ts
+  users/
+    users.module.ts
+    users.controller.ts
+    users.service.ts
+    dto/
+      create-user.dto.ts
+      update-user.dto.ts
+      update-status.dto.ts
+  records/
+    records.module.ts
+    records.controller.ts
+    records.service.ts
+    dto/
+      create-record.dto.ts
+      update-record.dto.ts
+      filter-record.dto.ts
+  dashboard/
+    dashboard.module.ts
+    dashboard.controller.ts
+    dashboard.service.ts
+  prisma/
+    prisma.module.ts
+    prisma.service.ts
+  common/
+    guards/
+      jwt-auth.guard.ts
+      roles.guard.ts
+    decorators/
+      roles.decorator.ts
+      current-user.decorator.ts
+    filters/
+      all-exceptions.filter.ts
+      http-exception.filter.ts
+      prisma-exception.filter.ts
+    interceptors/
+      transform-response.interceptor.ts
+    interfaces/
+      api-response.interface.ts
+    enums/
+      role.enum.ts
+  app.module.ts
+  app.controller.ts
+  app.service.ts
+  main.ts
+prisma/
+  schema.prisma
+  seed.ts
+test/
+  *.e2e-spec.ts
+```
+
+---
+
+## Response Format
+
+All successful responses are wrapped by a global interceptor:
+
+```json
+{
+  "success": true,
+  "data": { ... }
+}
+```
+
+All error responses use a standardized envelope:
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "BAD_REQUEST",
+    "message": "Validation failed"
+  }
+}
+```
+
+Error codes: `BAD_REQUEST`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `DUPLICATE_ENTRY`, `VALIDATION_ERROR`, `FOREIGN_KEY_ERROR`, `DATABASE_ERROR`, `INTERNAL_ERROR`
+
+---
+
+## Technical Decisions
+
+### Architecture
+
+- **Modular design**: Each feature (auth, users, records, dashboard) is a self-contained NestJS module with its own controller, service, and DTOs. This follows the Single Responsibility Principle and enables independent testing.
+
+- **Prisma ORM**: Chosen over TypeORM or raw SQL for type-safe queries with auto-completion. The schema file serves as the single source of truth for both database migrations and TypeScript types.
+
+- **DTO-based validation**: Validation logic is declared at the DTO level using class-validator decorators. The global ValidationPipe runs validation before any controller method executes.
+
+- **Guard-based authorization**: NestJS guards with the `@Roles()` decorator provide RBAC. This is more idiomatic than middleware-based authorization and integrates with NestJS metadata reflection.
+
+### Error Handling
+
+- **Three-layer exception filters**: Registered in order: `AllExceptionsFilter` (catch-all), `PrismaExceptionFilter` (database errors), `HttpExceptionFilter` (HTTP exceptions). This ensures every error is caught and returned in a consistent format.
+
+- **Prisma error translation**: Database errors (P2002 unique constraint, P2025 not found, P2003 foreign key) are translated to appropriate HTTP status codes and user-friendly messages.
+
+### Response Consistency
+
+- **Global response interceptor**: Every successful response is wrapped in `{ success: true, data }`. Frontend consumers always receive a predictable envelope regardless of the endpoint.
+
+- **Global PrismaModule**: Marked with `@Global()` so PrismaService is injectable anywhere without explicit module imports.
+
+---
+
+## Trade-offs
+
+### Stateless JWT vs Session-based Auth
+
+**Chosen**: Stateless JWT tokens without refresh token flow.
+
+**Pros**:
+- Simpler implementation
+- No server-side session storage required
+- Scales horizontally without session synchronization
+
+**Cons**:
+- Cannot revoke tokens before expiry
+- No token blacklist for logout
+- Longer token expiry needed for usability
+
+### Hard Delete vs Soft Delete
+
+**Chosen**: Hard delete for financial records.
+
+**Pros**:
+- Simpler queries (no `deletedAt` filters)
+- Smaller database size
+- GDPR compliance for data removal
+
+**Cons**:
+- No audit trail for deleted records
+- No recovery option for accidental deletes
+- May not meet financial audit requirements in some jurisdictions
+
+### Float vs Decimal for Amounts
+
+**Chosen**: MySQL FLOAT for the amount field.
+
+**Pros**:
+- Simpler type conversion in JavaScript
+- Sufficient precision for most use cases
+
+**Cons**:
+- Potential floating-point precision issues
+- Not suitable for exact financial calculations at scale
+- Production systems should consider DECIMAL(19,4)
+
+### Raw SQL for Monthly Trend
+
+**Chosen**: Prisma `$queryRaw` for the monthly trend aggregation.
+
+**Pros**:
+- MySQL DATE_FORMAT enables efficient grouping by month
+- Single query instead of multiple aggregations
+
+**Cons**:
+- Bypasses Prisma type safety
+- MySQL-specific (not portable to other databases)
+- Requires manual result type casting
+
+---
+
+## Additional Notes
+
+### Security Considerations
+
+- Passwords are hashed using bcrypt with a cost factor of 10
+- JWT secrets should be at least 256 bits in production
+- The password field is explicitly excluded from all user responses
+- Admin users cannot delete their own account to prevent lockout
+- Input validation rejects unknown fields (whitelist mode)
+
+### Performance Considerations
+
+- Database indexes are defined on frequently queried fields (type, category, date, createdBy)
+- Pagination is enforced with a maximum limit of 100 records per request
+- Dashboard queries use Prisma aggregate functions for efficient calculations
+
+### Extensibility
+
+- New roles can be added to the Prisma schema enum and the guards will automatically recognize them
+- Additional financial record types can be added to the RecordType enum
+- The modular architecture allows new feature modules to be added without modifying existing code
+
+### Known Limitations
+
+- No file upload support for receipts or attachments
+- No multi-tenancy support (all users share the same data)
+- No rate limiting implemented
+- No request logging or audit trail
+- Monthly trend is limited to the last 12 calendar months
+
+### Future Improvements
+
+- Implement refresh token rotation for enhanced security
+- Add soft delete with audit trail for compliance
+- Migrate amount field to DECIMAL for precision
+- Add rate limiting and request throttling
+- Implement comprehensive request logging
+
+---
 
 ## License
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+UNLICENSED

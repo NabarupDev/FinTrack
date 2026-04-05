@@ -6,31 +6,29 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   ParseIntPipe,
   UseGuards,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
-  ApiResponse,
   ApiBearerAuth,
+  ApiParam,
+  ApiResponse,
 } from '@nestjs/swagger';
 import { RecordsService } from './records.service';
 import { CreateRecordDto } from './dto/create-record.dto';
 import { UpdateRecordDto } from './dto/update-record.dto';
+import { FilterRecordDto } from './dto/filter-record.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
-import { Role } from '../common/enums/role.enum';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
-
-interface AuthUser {
-  id: number;
-  name: string;
-  email: string;
-  role: Role;
-  status: string;
-}
+import { Role } from '../common/enums/role.enum';
+import { AuthUser } from '../common/interfaces/auth-user.interface';
 
 @ApiTags('Records')
 @ApiBearerAuth()
@@ -41,48 +39,59 @@ export class RecordsController {
 
   @Post()
   @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Create a new financial record' })
-  @ApiResponse({ status: 201, description: 'Record created successfully' })
-  @ApiResponse({ status: 403, description: 'Access denied' })
+  @ApiOperation({ summary: 'Create record (Admin)' })
+  @ApiResponse({ status: 201, description: 'Record created' })
+  @ApiResponse({ status: 400, description: 'Validation error' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
   create(@Body() dto: CreateRecordDto, @CurrentUser() user: AuthUser) {
     return this.recordsService.create(dto, user.id);
   }
 
   @Get()
   @Roles(Role.ADMIN, Role.ANALYST)
-  @ApiOperation({ summary: 'Get all financial records' })
-  @ApiResponse({ status: 200, description: 'List of records' })
-  @ApiResponse({ status: 403, description: 'Access denied' })
-  findAll() {
-    return this.recordsService.findAll();
+  @ApiOperation({ summary: 'List records with filters (Admin, Analyst)' })
+  @ApiResponse({ status: 200, description: 'Paginated list of records' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  findAll(@Query() filters: FilterRecordDto) {
+    return this.recordsService.findAll(filters);
   }
 
   @Get(':id')
   @Roles(Role.ADMIN, Role.ANALYST)
-  @ApiOperation({ summary: 'Get a record by ID' })
-  @ApiResponse({ status: 200, description: 'Record details' })
+  @ApiOperation({ summary: 'Get record by id (Admin, Analyst)' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiResponse({ status: 200, description: 'Record found' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
   @ApiResponse({ status: 404, description: 'Record not found' })
-  @ApiResponse({ status: 403, description: 'Access denied' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.recordsService.findOne(id);
   }
 
   @Patch(':id')
   @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Update a record' })
-  @ApiResponse({ status: 200, description: 'Record updated successfully' })
+  @ApiOperation({ summary: 'Update record (Admin)' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiResponse({ status: 200, description: 'Record updated' })
+  @ApiResponse({ status: 400, description: 'Validation error' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
   @ApiResponse({ status: 404, description: 'Record not found' })
-  @ApiResponse({ status: 403, description: 'Access denied' })
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateRecordDto) {
     return this.recordsService.update(id, dto);
   }
 
   @Delete(':id')
   @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Delete a record' })
-  @ApiResponse({ status: 200, description: 'Record deleted successfully' })
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Delete record (Admin)' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiResponse({ status: 204, description: 'Record deleted' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
   @ApiResponse({ status: 404, description: 'Record not found' })
-  @ApiResponse({ status: 403, description: 'Access denied' })
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.recordsService.remove(id);
   }

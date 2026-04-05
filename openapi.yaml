@@ -1,0 +1,1372 @@
+openapi: 3.0.3
+
+info:
+  title: Financial Records API
+  description: |
+    REST API for managing financial records with role-based access control,
+    JWT authentication, and analytics dashboards.
+
+    ## Authentication
+    All endpoints except `/api/auth/register` and `/api/auth/login` require a
+    Bearer JWT token in the `Authorization` header.
+
+    ## Response Envelope
+    All successful responses are wrapped in a standard envelope:
+    ```json
+    { "success": true, "data": <payload> }
+    ```
+    All error responses use:
+    ```json
+    { "success": false, "error": { "code": "<ERROR_CODE>", "message": "<description>" } }
+    ```
+
+    ## Error Codes
+    | HTTP Status | Error Code        | Description                          |
+    |-------------|-------------------|--------------------------------------|
+    | 400         | BAD_REQUEST       | Validation error / bad input         |
+    | 400         | FOREIGN_KEY_ERROR | Related record not found (P2003)     |
+    | 401         | UNAUTHORIZED      | Missing or invalid JWT token         |
+    | 403         | FORBIDDEN         | Insufficient role permissions        |
+    | 404         | NOT_FOUND         | Resource not found                   |
+    | 404         | RECORD_NOT_FOUND  | Prisma record not found (P2025)      |
+    | 409         | CONFLICT          | Duplicate resource (e.g. email)      |
+    | 409         | DUPLICATE_ENTRY   | Prisma unique constraint (P2002)     |
+    | 422         | VALIDATION_ERROR  | Unprocessable entity                 |
+    | 500         | INTERNAL_ERROR    | Unexpected server error              |
+    | 500         | DATABASE_ERROR    | Unhandled Prisma error               |
+
+    ## Role Permissions
+    | Endpoint Group         | ADMIN | ANALYST | VIEWER |
+    |------------------------|:-----:|:-------:|:------:|
+    | POST /api/auth/*       | Y     | Y       | Y      |
+    | /api/users (all)       | Y     | N       | N      |
+    | POST /api/records      | Y     | N       | N      |
+    | GET /api/records       | Y     | Y       | N      |
+    | PATCH/DELETE /records   | Y     | N       | N      |
+    | /api/dashboard (all)   | Y     | Y       | Y      |
+  version: "1.0.0"
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:3000/api
+    description: Local development server
+
+# ─────────────────────────────────────────────────────────────── Security
+security: []
+
+components:
+  # ───────────────────────────────────────────────────── Security schemes
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  # ───────────────────────────────────────────────────── Reusable schemas
+  schemas:
+    # ── Enums ──
+    Role:
+      type: string
+      enum: [ADMIN, ANALYST, VIEWER]
+
+    Status:
+      type: string
+      enum: [ACTIVE, INACTIVE]
+
+    RecordType:
+      type: string
+      enum: [INCOME, EXPENSE]
+
+    # ── Standard error envelope ──
+    ErrorEnvelope:
+      type: object
+      description: All error responses use this standardized envelope.
+      required: [success, error]
+      properties:
+        success:
+          type: boolean
+          enum: [false]
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: Machine-readable error code
+              example: BAD_REQUEST
+            message:
+              type: string
+              description: Human-readable error message
+              example: Validation failed
+
+    # ── Auth DTOs ──
+    RegisterRequest:
+      type: object
+      required: [name, email, password]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          example: John Doe
+        email:
+          type: string
+          format: email
+          example: john@example.com
+        password:
+          type: string
+          minLength: 6
+          example: password123
+        role:
+          $ref: "#/components/schemas/Role"
+          default: VIEWER
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: john@example.com
+        password:
+          type: string
+          example: password123
+
+    # ── Auth responses (inner data) ──
+    AuthData:
+      type: object
+      description: Inner data for register response
+      properties:
+        token:
+          type: string
+          description: JWT access token
+          example: eyJhbGciOiJIUzI1NiIs...
+        user:
+          $ref: "#/components/schemas/SafeUser"
+
+    LoginAuthData:
+      type: object
+      description: Inner data for login response (user includes updatedAt)
+      properties:
+        token:
+          type: string
+          description: JWT access token
+          example: eyJhbGciOiJIUzI1NiIs...
+        user:
+          $ref: "#/components/schemas/LoginUser"
+
+    # ── User schemas ──
+    SafeUser:
+      type: object
+      description: User object returned by register and user management (explicit select, no password or updatedAt)
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: John Doe
+        email:
+          type: string
+          format: email
+          example: john@example.com
+        role:
+          $ref: "#/components/schemas/Role"
+        status:
+          $ref: "#/components/schemas/Status"
+        createdAt:
+          type: string
+          format: date-time
+          example: "2026-04-01T12:00:00.000Z"
+
+    LoginUser:
+      type: object
+      description: User object returned on login (full row minus password, includes updatedAt)
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: John Doe
+        email:
+          type: string
+          format: email
+          example: john@example.com
+        role:
+          $ref: "#/components/schemas/Role"
+        status:
+          $ref: "#/components/schemas/Status"
+        createdAt:
+          type: string
+          format: date-time
+          example: "2026-04-01T12:00:00.000Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2026-04-01T12:00:00.000Z"
+
+    CreateUserRequest:
+      type: object
+      required: [name, email, password, role]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          example: Alice Smith
+        email:
+          type: string
+          format: email
+          example: alice@example.com
+        password:
+          type: string
+          minLength: 6
+          example: password123
+        role:
+          $ref: "#/components/schemas/Role"
+
+    UpdateUserRequest:
+      type: object
+      description: All fields optional. Password cannot be updated via this endpoint.
+      properties:
+        name:
+          type: string
+          minLength: 2
+          example: Alice Johnson
+        email:
+          type: string
+          format: email
+          example: alice.new@example.com
+        role:
+          $ref: "#/components/schemas/Role"
+
+    UpdateStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          $ref: "#/components/schemas/Status"
+
+    UserListData:
+      type: object
+      description: Inner data for list users response
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SafeUser"
+        total:
+          type: integer
+          example: 5
+
+    # ── Record schemas ──
+    CreateRecordRequest:
+      type: object
+      required: [amount, type, category]
+      properties:
+        amount:
+          type: number
+          format: float
+          minimum: 0.01
+          example: 5000.00
+        type:
+          $ref: "#/components/schemas/RecordType"
+        category:
+          type: string
+          minLength: 1
+          example: salary
+        date:
+          type: string
+          format: date
+          description: ISO date string. Defaults to current date.
+          example: "2026-04-01"
+        notes:
+          type: string
+          example: April salary payment
+
+    UpdateRecordRequest:
+      type: object
+      description: All fields from CreateRecordRequest, but optional.
+      properties:
+        amount:
+          type: number
+          format: float
+          minimum: 0.01
+          example: 5500.00
+        type:
+          $ref: "#/components/schemas/RecordType"
+        category:
+          type: string
+          minLength: 1
+          example: salary
+        date:
+          type: string
+          format: date
+          example: "2026-04-15"
+        notes:
+          type: string
+          example: Updated salary payment
+
+    RecordCreator:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: John Doe
+        email:
+          type: string
+          format: email
+          example: john@example.com
+
+    FinancialRecord:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        amount:
+          type: number
+          format: float
+          example: 5000.00
+        type:
+          $ref: "#/components/schemas/RecordType"
+        category:
+          type: string
+          example: salary
+        date:
+          type: string
+          format: date-time
+          example: "2026-04-01T00:00:00.000Z"
+        notes:
+          type: string
+          nullable: true
+          example: April salary payment
+        createdBy:
+          type: integer
+          example: 1
+        createdAt:
+          type: string
+          format: date-time
+          example: "2026-04-01T12:00:00.000Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2026-04-01T12:00:00.000Z"
+        user:
+          $ref: "#/components/schemas/RecordCreator"
+
+    PaginatedRecordsData:
+      type: object
+      description: Inner data for paginated records response
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/FinancialRecord"
+        total:
+          type: integer
+          description: Total records matching the filter
+          example: 42
+        page:
+          type: integer
+          description: Current page number
+          example: 1
+        limit:
+          type: integer
+          description: Results per page
+          example: 10
+        totalPages:
+          type: integer
+          description: Total number of pages
+          example: 5
+
+    # ── Dashboard schemas (inner data) ──
+    TotalIncomeData:
+      type: object
+      properties:
+        totalIncome:
+          type: number
+          format: float
+          example: 45000
+
+    TotalExpenseData:
+      type: object
+      properties:
+        totalExpense:
+          type: number
+          format: float
+          example: 32000
+
+    NetBalanceData:
+      type: object
+      properties:
+        totalIncome:
+          type: number
+          format: float
+          example: 45000
+        totalExpense:
+          type: number
+          format: float
+          example: 32000
+        netBalance:
+          type: number
+          format: float
+          example: 13000
+
+    CategorySummaryData:
+      type: object
+      additionalProperties:
+        type: number
+        format: float
+      example:
+        salary: 45000
+        rent: 15000
+        food: 3200
+        transport: 800
+
+    RecentTransactionsData:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/FinancialRecord"
+
+    MonthlyTrendItem:
+      type: object
+      properties:
+        month:
+          type: string
+          description: "YYYY-MM format"
+          example: "2026-04"
+        income:
+          type: number
+          format: float
+          example: 15000
+        expense:
+          type: number
+          format: float
+          example: 9000
+
+# ═════════════════════════════════════════════════════════════════ Paths
+paths:
+  # ─────────────────────────────────────────────────── Root
+  /:
+    get:
+      tags: [Health]
+      summary: Health-check / root endpoint
+      operationId: getRoot
+      description: Returns a simple greeting string. Useful as a health-check probe.
+      responses:
+        "200":
+          description: Hello World
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    enum: [true]
+                  data:
+                    type: string
+                    example: Hello World!
+
+  # ─────────────────────────────────────────────────── Auth
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register new user
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: User created, token returned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    enum: [true]
+                  data:
+                    $ref: "#/components/schemas/AuthData"
+              example:
+                success: true
+                data:
+                  token: eyJhbGciOiJIUzI1NiIs...
+                  user:
+                    id: 1
+                    name: John Doe
+                    email: john@example.com
+                    role: VIEWER
+                    status: ACTIVE
+                    createdAt: "2026-04-01T12:00:00.000Z"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                success: false
+                error:
+                  code: BAD_REQUEST
+                  message: "name must be longer than or equal to 2 characters"
+        "409":
+          description: Email already registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                success: false
+                error:
+                  code: CONFLICT
+                  message: Email already registered
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login and receive JWT token
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Token returned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    enum: [true]
+                  data:
+                    $ref: "#/components/schemas/LoginAuthData"
+              example:
+                success: true
+                data:
+                  token: eyJhbGciOiJIUzI1NiIs...
+                  user:
+                    id: 1
+                    name: John Doe
+                    email: john@example.com
+                    role: VIEWER
+                    status: ACTIVE
+                    createdAt: "2026-04-01T12:00:00.000Z"
+                    updatedAt: "2026-04-01T12:00:00.000Z"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                success: false
+                error:
+                  code: UNAUTHORIZED
+                  message: Invalid credentials
+        "403":
+          description: Account deactivated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                success: false
+                error:
+                  code: FORBIDDEN
+                  message: Account is deactivated
+
+  # ─────────────────────────────────────────────────── Users (Admin only)
+  /users:
+    post:
+      tags: [Users]
+      summary: Create user (Admin only)
+      operationId: createUser
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserRequest"
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    enum: [true]
+                  data:
+                    $ref: "#/components/schemas/SafeUser"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Forbidden - requires ADMIN role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Email already in use
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+    get:
+      tags: [Users]
+      summary: List users (Admin only)
+      operationId: listUsers
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: role
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/Role"
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/Status"
+      responses:
+        "200":
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    enum: [true]
+                  data:
+                    $ref: "#/components/schemas/UserListData"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Forbidden - requires ADMIN role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /users/{id}:
+    get:
+      tags: [Users]
+      summary: Get user by id (Admin only)
+      operationId: getUserById
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: User ID
+      responses:
+        "200":
+          description: User found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    enum: [true]
+                  data:
+                    $ref: "#/components/schemas/SafeUser"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Forbidden - requires ADMIN role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+    patch:
+      tags: [Users]
+      summary: Update user (Admin only)
+      operationId: updateUser
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: User ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserRequest"
+      responses:
+        "200":
+          description: User updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    enum: [true]
+                  data:
+                    $ref: "#/components/schemas/SafeUser"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Forbidden - requires ADMIN role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Email already in use
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+    delete:
+      tags: [Users]
+      summary: Delete user (Admin only)
+      operationId: deleteUser
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: User ID
+      responses:
+        "204":
+          description: User deleted (no content)
+        "400":
+          description: Cannot delete your own account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                success: false
+                error:
+                  code: BAD_REQUEST
+                  message: Cannot delete your own account
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Forbidden - requires ADMIN role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /users/{id}/status:
+    patch:
+      tags: [Users]
+      summary: Activate or deactivate user (Admin only)
+      operationId: updateUserStatus
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: User ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateStatusRequest"
+      responses:
+        "200":
+          description: Status updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    enum: [true]
+                  data:
+                    $ref: "#/components/schemas/SafeUser"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Forbidden - requires ADMIN role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  # ─────────────────────────────────────────────────── Records
+  /records:
+    post:
+      tags: [Records]
+      summary: Create record (Admin only)
+      operationId: createRecord
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRecordRequest"
+      responses:
+        "201":
+          description: Record created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    enum: [true]
+                  data:
+                    $ref: "#/components/schemas/FinancialRecord"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Forbidden - requires ADMIN role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+    get:
+      tags: [Records]
+      summary: List records with filters and pagination (Admin, Analyst)
+      operationId: listRecords
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: type
+          in: query
+          required: false
+          description: Filter by record type
+          schema:
+            $ref: "#/components/schemas/RecordType"
+        - name: category
+          in: query
+          required: false
+          description: Case-insensitive contains match on category
+          schema:
+            type: string
+            example: salary
+        - name: startDate
+          in: query
+          required: false
+          description: Records on or after this date (ISO format)
+          schema:
+            type: string
+            format: date
+            example: "2026-01-01"
+        - name: endDate
+          in: query
+          required: false
+          description: Records on or before this date (ISO format)
+          schema:
+            type: string
+            format: date
+            example: "2026-12-31"
+        - name: search
+          in: query
+          required: false
+          description: Search in category or notes
+          schema:
+            type: string
+            example: food
+        - name: page
+          in: query
+          required: false
+          description: Page number (default 1)
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          required: false
+          description: Results per page (default 10, max 100)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+      responses:
+        "200":
+          description: Paginated list of records
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    enum: [true]
+                  data:
+                    $ref: "#/components/schemas/PaginatedRecordsData"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Forbidden - requires ADMIN or ANALYST role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /records/{id}:
+    get:
+      tags: [Records]
+      summary: Get record by id (Admin, Analyst)
+      operationId: getRecordById
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Record ID
+      responses:
+        "200":
+          description: Record found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    enum: [true]
+                  data:
+                    $ref: "#/components/schemas/FinancialRecord"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Forbidden - requires ADMIN or ANALYST role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Record not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+    patch:
+      tags: [Records]
+      summary: Update record (Admin only)
+      operationId: updateRecord
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Record ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateRecordRequest"
+      responses:
+        "200":
+          description: Record updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    enum: [true]
+                  data:
+                    $ref: "#/components/schemas/FinancialRecord"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Forbidden - requires ADMIN role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Record not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+    delete:
+      tags: [Records]
+      summary: Delete record (Admin only)
+      operationId: deleteRecord
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Record ID
+      responses:
+        "204":
+          description: Record deleted (no content)
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Forbidden - requires ADMIN role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Record not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  # ─────────────────────────────────────────────────── Dashboard
+  /dashboard/total-income:
+    get:
+      tags: [Dashboard]
+      summary: Total income sum (All authenticated roles)
+      operationId: getTotalIncome
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Total income
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    enum: [true]
+                  data:
+                    $ref: "#/components/schemas/TotalIncomeData"
+              example:
+                success: true
+                data:
+                  totalIncome: 45000
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /dashboard/total-expense:
+    get:
+      tags: [Dashboard]
+      summary: Total expense sum (All authenticated roles)
+      operationId: getTotalExpense
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Total expense
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    enum: [true]
+                  data:
+                    $ref: "#/components/schemas/TotalExpenseData"
+              example:
+                success: true
+                data:
+                  totalExpense: 32000
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /dashboard/net-balance:
+    get:
+      tags: [Dashboard]
+      summary: Net balance - income, expense, and net (All authenticated roles)
+      operationId: getNetBalance
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Income, expense, and net balance
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    enum: [true]
+                  data:
+                    $ref: "#/components/schemas/NetBalanceData"
+              example:
+                success: true
+                data:
+                  totalIncome: 45000
+                  totalExpense: 32000
+                  netBalance: 13000
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /dashboard/category-summary:
+    get:
+      tags: [Dashboard]
+      summary: Totals grouped by category (All authenticated roles)
+      operationId: getCategorySummary
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Totals grouped by category
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    enum: [true]
+                  data:
+                    $ref: "#/components/schemas/CategorySummaryData"
+              example:
+                success: true
+                data:
+                  salary: 45000
+                  rent: 15000
+                  food: 3200
+                  transport: 800
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /dashboard/recent-transactions:
+    get:
+      tags: [Dashboard]
+      summary: Last 10 transactions (All authenticated roles)
+      operationId: getRecentTransactions
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Recent transactions list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    enum: [true]
+                  data:
+                    $ref: "#/components/schemas/RecentTransactionsData"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /dashboard/monthly-trend:
+    get:
+      tags: [Dashboard]
+      summary: Monthly income vs expense - last 12 months (All authenticated roles)
+      operationId: getMonthlyTrend
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Monthly trend data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    enum: [true]
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/MonthlyTrendItem"
+              example:
+                success: true
+                data:
+                  - month: "2025-05"
+                    income: 10000
+                    expense: 8000
+                  - month: "2025-06"
+                    income: 12000
+                    expense: 7500
+                  - month: "2026-04"
+                    income: 15000
+                    expense: 9000
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+tags:
+  - name: Health
+    description: Root health-check endpoint
+  - name: Auth
+    description: Public authentication endpoints - register and login
+  - name: Users
+    description: User management - ADMIN role required
+  - name: Records
+    description: Financial record CRUD - role-based access
+  - name: Dashboard
+    description: Analytics and summary endpoints - all authenticated roles

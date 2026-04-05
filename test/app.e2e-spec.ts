@@ -1,29 +1,41 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
-import { AppModule } from './../src/app.module';
+import { createTestApp } from './setup';
+import { ApiResponse } from './types';
 
-describe('AppController (e2e)', () => {
+describe('Health & Response Envelope', () => {
   let app: INestApplication<App>;
 
-  beforeEach(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
+  beforeAll(async () => {
+    app = await createTestApp();
+  }, 30000);
 
-    app = moduleFixture.createNestApplication();
-    await app.init();
+  afterAll(() => app.close());
+
+  it('GET /api — returns { success: true, data: "Hello World!" }', async () => {
+    const res = await request(app.getHttpServer()).get('/api').expect(200);
+    const body = res.body as ApiResponse<string>;
+    expect(body).toEqual({ success: true, data: 'Hello World!' });
   });
 
-  it('/ (GET)', () => {
-    return request(app.getHttpServer())
-      .get('/')
-      .expect(200)
-      .expect('Hello World!');
+  it('success responses have exactly { success, data }', async () => {
+    const res = await request(app.getHttpServer()).get('/api').expect(200);
+    const body = res.body as ApiResponse<string>;
+    expect(Object.keys(body).sort()).toEqual(['data', 'success']);
   });
 
-  afterEach(async () => {
-    await app.close();
+  it('error responses have { success: false, error: { code, message } }', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/api/auth/login')
+      .send({ email: 'no@no.com', password: 'wrong' })
+      .expect(401);
+
+    const body = res.body as ApiResponse<unknown>;
+    expect(body.success).toBe(false);
+    if (body.error) {
+      expect(body.error).toHaveProperty('code');
+      expect(body.error).toHaveProperty('message');
+    }
   });
 });
